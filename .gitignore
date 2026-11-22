@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+data/raw/clinical/clinical.tsv
+data/raw/clinical/follow_up.tsv
+data/raw/clinical/GS-Subtype labels.xlsx
+data/raw/clinical/pathology_detail.tsv
