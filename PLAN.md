@@ -24,25 +24,33 @@ Tags: MUST / SHOULD / STRETCH. Cut order if behind: STRETCH, then imaging, then 
 - Nothing is **validated** unless it is tested on an outside cohort.
 - Split by 12-character patient ID, never by clinical_raw row.
 
-## Phase 1: Clinical collapse (Nov 22) [MUST]
+## Phase 1: Patient key and clinical descriptors (Nov 22) [MUST]
 Files: `src/collapse_clinical.py`, `data/interim/clinical_patient.csv`, `tests/test_clinical_patient.py`.
-1.1 `DESCRIBE clinical_raw`. Report the full column list and whether `cases_submitter_id` is present. Stop here if it is not.
-1.2 `COUNT(*)` vs `COUNT(DISTINCT cases_submitter_id)` (expect 5546 / 1098, but trust the output) and a rows-per-patient histogram.
-1.3 Pandas: `df.groupby("cases_submitter_id").nunique().gt(1).sum()`. Report the columns that vary within a patient. Do this before any collapse SQL is written.
-1.4 Write the collapse (one row per patient) into `clinical_patient`, using the printed column names to decide MAX versus which columns must stay multi-valued.
-1.5 Read it back with the same `URL.create` pattern and save the CSV from a script.
-Test: row count equals the number of unique case IDs; `duplicated(subset=[id]).sum() == 0`.
-Learn: groupby, nunique, gt, sum; COUNT, COUNT DISTINCT, GROUP BY, MAX.
 
-## Phase 2: Receptors and label audit (Nov 22-23) [MUST]
-Files: `src/load_followup.py`, `tests/test_receptors.py`; MySQL `followup_raw`, `receptors`, `labels_prior`.
-2.1 Read `follow_up.tsv` (`dtype=str`, `na_values=["'--"]`), no column drop yet. Print the column list after the dot-to-underscore rename and the fill rates of `molecular_tests_gene_symbol`, `molecular_tests_test_result`, `molecular_tests_laboratory_test`.
-2.2 `value_counts` of gene symbol restricted to ESR1, PGR, ERBB2. Count patients with two different results for the same gene (IHC vs FISH conflicts for HER2). Report the conflict count.
-2.3 Build one receptor row per patient (ER, PR, HER2) into `receptors`.
-2.4 Load `brca_clinical_labels.csv` into `labels_prior`; join on patient ID (print IDs first); SQL query for disagreements between the two receptor sources. Report counts.
-2.5 Decide what to do with `exclude_flag` patients after printing `value_counts` of that column. Write the decision into PROJECT_CONTEXT.md.
-Test: `receptors` has one row per patient; a check that ER, PR, HER2 are not in the column list later passed as X.
-Use: receptors describe the cohort and cross-check labels. They are never model inputs.
+1.1 [done] `DESCRIBE clinical_raw`: 65 columns, `cases_submitter_id` present.
+1.2 [done] 5,546 rows, 1,098 distinct patients, 0 null IDs; rows per patient range from 1 to 40.
+1.3 [done] Within-patient variation: `treatments_*` varies for most patients, and `diagnoses_*` varies for up to 182 patients (several have more than one diagnosis: prior primary, metastasis, or a second cancer in another organ). `cases_*` and `demographic_*` never vary. So `diagnoses_*` and `treatments_*` are left out on purpose. Keep this summary in `docs/clinical_data_notes.md`; `data/` is local-only and not committed.
+1.4 Build `clinical_patient`:
+    - Select `cases_case_id`, `cases_submitter_id`, `cases_disease_type`, `cases_primary_site`, `demographic_age_at_index`, `demographic_sex_at_birth`, `demographic_vital_status`.
+    - Run `drop_duplicates()` (not `MAX`, because `MAX` hides disagreements between a patient's rows).
+    - Rename `cases_submitter_id` to `patient_id`.
+    - Do not include any `diagnoses_` or `treatments_` column.
+1.5 Save `data/interim/clinical_patient.csv` from the script. Optional: also write it to MySQL as `clinical_patient`.
+Asserts and test: exactly 1,098 rows; `patient_id` is unique; `TCGA-BH-A0B2` is present; no column starts with `diagnoses_` or `treatments_`; the patient-ID set equals the set of non-null `cases_submitter_id` values in `clinical_raw`.
+If the uniqueness assert fails: print the duplicated IDs with `duplicated("patient_id", keep=False)` and report them. It means a descriptive field disagrees within a patient.
+Use: the patient key for ID-based alignment later, plus a few cohort descriptors. Not a source of model features.
+
+## Phase 2: Receptor CSV audit (Nov 22) [MUST]
+Files: `src/inspect_receptor_csv.py`, `data/interim/receptors.csv`, `tests/test_receptors.py`.
+Before writing any data artifact: `data/` must be in `.gitignore`.
+
+2.1 Read `data/raw/clinical/brca_clinical_labels.csv` with `dtype=str`. Print the columns, row count, number of unique `patient_id` values, null patient-ID count, and the first five IDs with their string lengths. Expected: 1,097 rows, 1,097 unique, all of length 12.
+2.2 Print `value_counts(dropna=False)` for `ER`, `PR`, `HER2`, `HER2_source` and `exclude_flag`. Report the output. Expected: `exclude_flag` has 1,072 empty, 13 `neoadjuvant`, 12 `male`; ER, PR and HER2 are missing for about 51, 54 and 140 patients.
+2.3 Assert `patient_id` is unique. Save exactly `patient_id`, `ER`, `PR`, `HER2`, `HER2_source`, `exclude_flag` to `data/interim/receptors.csv`. Keep missing values as missing. Do not drop any row.
+2.4 Compare the `patient_id` set in the receptor CSV with `clinical_patient` using `Index.intersection`, not row order. Report the overlap and the IDs that appear in only one source. Expected: 1,097 shared, and exactly one patient only in `clinical_patient`.
+2.5 Decide the `exclude_flag` rule only after 2.2 is printed. Default: keep all rows in `receptors.csv` and `clinical_patient`, apply the flag when building the modeling cohort in Phase 3, and report results with and without the flagged patients. Write the decision in `PROJECT_CONTEXT.md`.
+Test: `receptors.csv` has one row per patient ID; every ID has length 12; ER, PR and HER2 are absent from the model feature list.
+Use: this CSV is the only receptor source for this project; `follow_up.tsv` is out of scope. Receptors describe the cohort and cross-check labels. They are never model inputs.
 
 ## Phase 3: Omics and labels (Nov 23) [MUST]
 Files: `src/align_omics.py`, `tests/test_alignment.py`, aligned matrices in `data/processed/` (names chosen after you see the IDs).
