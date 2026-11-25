@@ -12,9 +12,9 @@ Tags: MUST / SHOULD / STRETCH. Cut order if behind: STRETCH, then imaging, then 
 ## Ground truth about the files (verified in the repo, not guessed)
 - `src/load_clinical.py` loads `data/raw/clinical/clinical.tsv` into MySQL database `brca_project`, table `clinical_raw`. It uses `if_exists="replace"`, so do not re-run it while working on the collapse.
 - `clinical.tsv` has repeated rows per patient. Print `DESCRIBE clinical_raw` before writing any query, and confirm `cases_submitter_id` survived the 5% column filter.
-- `follow_up.tsv` is a long table. ESR1, PGR and ERBB2 are values under `molecular_tests.gene_symbol`, with the call in `molecular_tests.test_result` and the assay in `molecular_tests.laboratory_test` (IHC and FISH both appear for ERBB2). Do not apply the 5% column drop to this file until you print fill rates for those three columns.
+- `follow_up.tsv` is out of scope for this class-project pass.
 - Subtype labels file on disk is `data/raw/clinical/GS-Subtype labels.xlsx` (with a space). Print its sheet names and columns before reading it. The class order 0 LumA, 1 Her2, 2 LumB, 3 Normal, 4 Basal and the counts 353, 42, 132, 31, 113 stay hypotheses until you print `value_counts()`.
-- `brca_clinical_labels.csv` goes in `data/raw/clinical/`. It has 1,097 patient rows plus a header and columns patient_id, sex, ER, PR, HER2, HER2_source, clinical_subtype, histology_group, stage, pT, pN, pM, age, menopause, neoadjuvant, vital_status, last_contact_days, death_days, exclude_flag.
+- `nationwidechildrens.org_clinical_patient_brca.txt` is the receptor source. It is tab-separated with a header plus two metadata rows; read it with `sep="\t"`, `dtype=str`, and `skiprows=[1, 2]`. Use `bcr_patient_barcode` as the 12-character patient key.
 - MLOmics: put the download in the existing `data/raw/MLOmics/` (do not create a second folder). Its README says: rows are features and columns are patients; values are z-score normalized; **Top** means ANOVA-selected (mRNA 5000, miRNA 200, methylation 5000, CNV 5000); **Original** sizes for GS-BRCA are mRNA 18206, miRNA 345, methylation 19049, CNV 19533. File names and ID spelling are unknown until you run `ls` and print them.
 - Clinical IDs are hyphenated (for example TCGA-E2-A1IU). Print omics IDs and their lengths before slicing to 12 characters.
 
@@ -40,16 +40,16 @@ Asserts and test: exactly 1,098 rows; `patient_id` is unique; `TCGA-BH-A0B2` is 
 If the uniqueness assert fails: print the duplicated IDs with `duplicated("patient_id", keep=False)` and report them. It means a descriptive field disagrees within a patient.
 Use: the patient key for ID-based alignment later, plus a few cohort descriptors. Not a source of model features.
 
-## Phase 2: Receptor CSV audit (Nov 22) [MUST]
+## Phase 2: Receptor audit (Nov 22) [MUST]
 Files: `src/inspect_receptor_csv.py`, `data/interim/receptors.csv`, `tests/test_receptors.py`.
 Before writing any data artifact: `data/` must be in `.gitignore`.
 
-2.1 Read `data/raw/clinical/brca_clinical_labels.csv` with `dtype=str`. Print the columns, row count, number of unique `patient_id` values, null patient-ID count, and the first five IDs with their string lengths. Expected: 1,097 rows, 1,097 unique, all of length 12.
-2.2 Print `value_counts(dropna=False)` for `ER`, `PR`, `HER2`, `HER2_source` and `exclude_flag`. Report the output. Expected: `exclude_flag` has 1,072 empty, 13 `neoadjuvant`, 12 `male`; ER, PR and HER2 are missing for about 51, 54 and 140 patients.
-2.3 Assert `patient_id` is unique. Save exactly `patient_id`, `ER`, `PR`, `HER2`, `HER2_source`, `exclude_flag` to `data/interim/receptors.csv`. Keep missing values as missing. Do not drop any row.
-2.4 Compare the `patient_id` set in the receptor CSV with `clinical_patient` using `Index.intersection`, not row order. Report the overlap and the IDs that appear in only one source. Expected: 1,097 shared, and exactly one patient only in `clinical_patient`.
-2.5 Decide the `exclude_flag` rule only after 2.2 is printed. Default: keep all rows in `receptors.csv` and `clinical_patient`, apply the flag when building the modeling cohort in Phase 3, and report results with and without the flagged patients. Write the decision in `PROJECT_CONTEXT.md`.
-Test: `receptors.csv` has one row per patient ID; every ID has length 12; ER, PR and HER2 are absent from the model feature list.
+2.1 [done] Read `data/raw/clinical/nationwidechildrens.org_clinical_patient_brca.txt` with `sep="\t"`, `dtype=str`, and `skiprows=[1, 2]`. `bcr_patient_barcode` has 1,097 unique, non-null, 12-character IDs.
+2.2 [done] Derive ER and PR from explicit IHC `Positive`/`Negative` calls; all other values are missing. For HER2, retain an IHC `Positive`/`Negative` call; otherwise use a FISH `Positive`/`Negative` call; otherwise leave it missing. Record `HER2_source` as `IHC` or `FISH`. Final missing counts: ER 51, PR 54, HER2 140.
+2.3 [done] Derive `exclude_flag` without dropping rows: `male` for `gender == "MALE"` (12 patients), `neoadjuvant` for `history_neoadjuvant_treatment == "Yes"` (13 patients). The groups do not overlap; 1,072 values are missing. Save exactly `patient_id`, `ER`, `PR`, `HER2`, `HER2_source`, `exclude_flag` to `data/interim/receptors.csv`.
+2.4 [done] Compare the patient-ID sets with `Index.intersection`, not row order: 1,097 IDs are shared; `TCGA-BH-A0B2` is clinical-only; no receptor ID is unmatched.
+2.5 [done] Keep all rows in `receptors.csv` and `clinical_patient`. Apply `exclude_flag` only when constructing the Phase 3 modeling cohort, and report results with and without the 25 flagged patients. Receptors and flags are never model inputs.
+Test: add checks that `receptors.csv` has one row per patient ID, every ID has length 12, and ER, PR, and HER2 are absent from the model feature list.
 Use: this CSV is the only receptor source for this project; `follow_up.tsv` is out of scope. Receptors describe the cohort and cross-check labels. They are never model inputs.
 
 ## Phase 3: Omics and labels (Nov 23) [MUST]

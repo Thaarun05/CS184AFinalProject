@@ -35,9 +35,8 @@ Two workstreams, nothing else:
 |---|---|---|
 | MLOmics GS-BRCA (HF `AIBIC/MLOmics`) | Diagnosis baseline | 671 TCGA patients; mRNA, methylation, CNV 5,000 features each in "Top" files, miRNA 366. "Top" files may be label-selected. File names/orientation/IDs not yet confirmed. |
 | GDC TCGA-BRCA clinical TSVs | Receptors, stage, M status | 1,098 patients. clinical.tsv has 5,546 rows (patients repeat). Missing marker is `'--`. family_history (empty) and exposure (1 patient) are useless. |
-| follow_up.tsv | ESR1/PGR/ERBB2 test results; recurrence | 96 patients with recurrence/progression = too few for a main label |
+| nationwidechildrens.org clinical patient table | Receptor descriptors | `nationwidechildrens.org_clinical_patient_brca.txt`; 1,097 patients; baseline IHC receptor calls plus HER2 FISH fallback |
 | GS-Subtype_labels.xlsx | Class mapping | |
-| brca_clinical_labels.csv | Earlier receptor/subtype table to cross-check | columns: patient_id, ER, PR, HER2, HER2_source, clinical_subtype, exclude_flag, etc. |
 | GDC slides | Imaging pilot | 1,062 diagnostic-slide cases; subset only; needs a GPU |
 | DepMap, ChEMBL, Open Targets | Workstream 4 | not yet downloaded |
 | METABRIC (cBioPortal), HTAN, AURORA (TCIA) | Later / outside check | AURORA: 55 patients, images + clinical CC BY 4.0, molecular on dbGaP/GEO |
@@ -61,13 +60,13 @@ Wide omics matrices stay in pandas (MySQL InnoDB allows at most 1,017 columns pe
 
 ## Progress log
 - 2026-11-21: `src/load_clinical.py` tidies clinical.tsv: reads with `na_values=["'--"]`, keeps columns more than 5% filled (202 to 65; dropped ones were negligible), renames dots to underscores. Next: add the `to_sql` load into `brca_project.clinical_raw`, find which columns cause repeated rows (groupby/nunique), then collapse to one row per patient in SQL.
+- 2026-11-24: Phase 1 complete. `clinical_patient.csv` has 1,098 unique 12-character patient IDs and only stable descriptive fields; diagnosis and treatment fields are intentionally excluded.
+- 2026-11-25: Phase 2 receptor audit complete. `receptors.csv` has 1,097 unique IDs; ER/PR use explicit IHC calls, HER2 uses IHC with FISH fallback, and all rows are retained with 25 documented flags for later sensitivity analysis.
 
 ## Next steps
-1. Load `clinical_raw` into MySQL. Run: rows vs distinct patients (expect 5546 / 1098), rows-per-patient histogram, columns that vary within a patient.
-2. Collapse to one row per patient (`clinical_patient`).
-3. Load follow_up receptor tests (ESR1, PGR, ERBB2) and compare with brca_clinical_labels.csv.
-4. Download MLOmics GS-BRCA; inspect file names, orientation, ID format; check overlap with clinical patients.
-5. Clean in pandas; leakage audit; baselines; nested CV; stacking; calibration; abstention.
+1. Add `tests/test_receptors.py`: one row per patient ID, all IDs length 12, and receptor fields excluded from the future model-feature list.
+2. Start Phase 3: inspect MLOmics GS-BRCA filenames, orientations, and ID formats; inspect the subtype-label workbook before loading either into a model.
+3. Align Original omics matrices and labels by 12-character patient ID, then complete the leakage audit and nested-CV baseline.
 
 ## Longer docs (private Claude Docs, for reference only)
 - Proposal (class template): https://claude.ai/artifact/MrBBmWLuxyGP9e721pGWk6
