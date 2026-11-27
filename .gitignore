@@ -237,3 +237,6 @@ data/
 .env
 .env.*
 !.env.example
+data/raw/data_notes.md
+data/raw/data_notes.md
+data/raw/data_notes.md

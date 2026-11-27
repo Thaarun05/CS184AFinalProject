@@ -1,0 +1,180 @@
+import pandas as pd
+import os
+from sqlalchemy import create_engine
+from sqlalchemy import engine
+from sqlalchemy.engine import URL
+
+path = "data/raw/clinical/nationwidechildrens.org_clinical_patient_brca.txt"
+
+
+receptor_source = pd.read_csv(path, sep="\t", dtype=str, skiprows=[1,2])
+
+id_col = "bcr_patient_barcode"
+
+# print("columns:", receptor_source.columns.tolist())
+# print("n_rows:", len(receptor_source))
+# print("n_unique_patient_ids:", receptor_source[id_col].nunique())
+# print("n_null_patient_ids:", receptor_source[id_col].isna().sum())
+
+# print(
+#     receptor_source[id_col]
+#     .head()
+#     .to_frame()
+#     .assign(id_length=lambda frame: frame[id_col].str.len())
+#     .to_string(index=False)
+# )
+
+receptor_cols = [
+    "er_status_by_ihc",
+    "pr_status_by_ihc",
+    "her2_status_by_ihc",
+    "her2_fish_status",
+]
+
+# for col in receptor_cols:
+#     print(f"\n{col}")
+#     print(receptor_source[col].value_counts(dropna=False).to_string())
+
+print(
+    pd.crosstab(
+        receptor_source["her2_status_by_ihc"],
+        receptor_source["her2_fish_status"],
+    ).to_string()
+)
+
+valid_calls = {"Positive", "Negative"} # only two usuable values for receptor status
+
+ihc_is_valid = receptor_source["her2_status_by_ihc"].isin(valid_calls)
+fish_is_valid = receptor_source["her2_fish_status"].isin(valid_calls)
+
+receptor_source["HER2"] = receptor_source["her2_status_by_ihc"].where(
+    ihc_is_valid
+)
+
+use_fish = ~ihc_is_valid & fish_is_valid
+receptor_source.loc[use_fish, "HER2"] = receptor_source.loc[
+    use_fish,
+    "her2_fish_status",
+]
+
+receptor_source["HER2_source"] = pd.NA
+receptor_source.loc[ihc_is_valid, "HER2_source"] = "IHC"
+receptor_source.loc[use_fish, "HER2_source"] = "FISH"
+
+print(receptor_source["HER2"].value_counts(dropna=False).to_string())
+print(receptor_source["HER2_source"].value_counts(dropna=False).to_string())
+
+
+for raw_col, output_col in {
+    "er_status_by_ihc": "ER",
+    "pr_status_by_ihc": "PR",
+}.items():
+    receptor_source[output_col] = receptor_source[raw_col].where(
+        receptor_source[raw_col].isin(valid_calls)
+    )
+
+    print(f"\n{output_col}")
+    print(
+        receptor_source[output_col]
+        .value_counts(dropna=False)
+        .to_string()
+    )
+
+flag_source_cols = [
+    "gender",
+    "history_neoadjuvant_treatment",
+]
+
+for col in flag_source_cols:
+    print(f"\n{col}")
+    print(
+        receptor_source[col]
+        .value_counts(dropna=False)
+        .to_string()
+    )
+
+print(
+    pd.crosstab(
+        receptor_source["gender"],
+        receptor_source["history_neoadjuvant_treatment"],
+        dropna=False,
+    ).to_string()
+)
+
+
+is_male = receptor_source["gender"].eq("MALE")
+has_neoadjuvant = receptor_source[
+    "history_neoadjuvant_treatment"
+].eq("Yes")
+
+assert not (is_male & has_neoadjuvant).any()
+
+receptor_source["exclude_flag"] = pd.NA
+receptor_source.loc[is_male, "exclude_flag"] = "male"
+receptor_source.loc[
+    has_neoadjuvant,
+    "exclude_flag",
+] = "neoadjuvant"
+
+print(
+    receptor_source["exclude_flag"]
+    .value_counts(dropna=False)
+    .to_string()
+)
+
+
+receptors = (
+    receptor_source[
+        [
+            "bcr_patient_barcode",
+            "ER",
+            "PR",
+            "HER2",
+            "HER2_source",
+            "exclude_flag",
+        ]
+    ]
+    .rename(columns={"bcr_patient_barcode": "patient_id"})
+)
+
+# assert len(receptors) == 1097
+# assert receptors["patient_id"].notna().all()
+# assert receptors["patient_id"].is_unique
+# assert receptors["patient_id"].str.len().eq(12).all()
+
+# receptors.to_csv("data/interim/receptors.csv", index=False)
+
+# print(receptors.shape)
+# print(receptors.columns.tolist())
+# print(receptors.head().to_string(index=False))
+
+# url = URL.create(
+#     drivername="mysql+pymysql",
+#     username="root",
+#     password = os.environ["MYSQL_PWD"],
+#     host="localhost",
+#     database="brca_project",
+# )
+
+# engine = create_engine(url)
+
+# receptor_source.to_sql("receptor_source", engine)
+
+
+clinical_patient = pd.read_csv(
+    "data/interim/clinical_patient.csv",
+    dtype=str,
+)
+
+clinical_ids = pd.Index(clinical_patient["patient_id"])
+receptor_ids = pd.Index(receptors["patient_id"])
+
+shared_ids = clinical_ids.intersection(receptor_ids)
+clinical_only_ids = clinical_ids.difference(receptor_ids)
+receptor_only_ids = receptor_ids.difference(clinical_ids)
+
+print("n_shared:", len(shared_ids))
+print("clinical_only:", clinical_only_ids.tolist())
+print("receptor_only:", receptor_only_ids.tolist())
+
+
