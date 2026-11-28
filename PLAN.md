@@ -88,11 +88,12 @@ Files: `src/build_processed.py`, `src/data.py`, `tests/test_data.py`. Outputs in
 3.5 A second expression download from GDC is not needed because Original is complete.
 Test: `tests/test_data.py` checks 671 rows, only mRNA-prefixed columns for `load_xy(["mRNA"])`, and class counts 353 / 42 / 132 / 31 / 113 for labels 0 to 4.
 
-## Phase 4: Leakage audit and splits (Nov 27) [MUST]
+## Phase 4: Leakage audit and splits (Nov 27-28) [MUST] [done]
 Files: `results/leakage_audit.md`, `src/splits.py`, `tests/test_splits.py`.
 4.1 Write the audit: what is fit on what; selection, imputation and scaling live inside the Pipeline; split key is patient ID; receptors out of X; Top is ANOVA-selected; matrices are pre-z-scored.
 4.2 Outer 5-fold stratified split with seeds (start with one repeat). Print the smallest class count in every outer test fold and every inner test fold. If an inner fold would hold fewer than 5 of a class, lower `n_splits` and record why.
 Test: train and test IDs are disjoint and cover the full index for every fold; a toy case with a repeated ID is rejected.
+Status 2026-11-28: done. `outer_folds(y, n_splits=5, seed=42)` in `src/splits.py` returns patient IDs per fold and asserts the index is unique; `results/folds.csv` holds the fold assignment for all 671 patients and every target reuses it; `results/leakage_audit.md` is written; `tests/test_splits.py` passes. Test-fold class counts (LumA, Her2, LumB, Normal, Basal) are about 70/8-9/26-27/6-7/22-23. Two small gaps, optional: a toy test that a repeated ID is rejected (currently only an assert inside `outer_folds`), and printing inner-fold class counts to confirm the 3-fold choice (so far justified by arithmetic only).
 
 ## Phase 5: Per-modality models (Nov 27-29) [MUST for RNA elastic-net; SHOULD for others]
 Files: `src/modality_models.py`, `results/modality_scores.csv` (macro-F1, bootstrap low and high, per-class recall, seed).
@@ -172,8 +173,8 @@ Slide claims: RNA elastic-net is pilot; any Top-file number is not a result; ima
 
 ## Day plan
 - Nov 22-27: Phases 1-3 done
-- Nov 27: Phase 4 (audit, fold counts, split test, leakage table); download the TCGA-CDR file; inspect the IDC embeddings; write `docs/target_registry.md`
-- Nov 28: Phase 5: majority baseline, time one RNA fit, PAM50 nested CV on RNA; write `run_target`
+- Nov 27-28: Phase 4 done (splits, folds.csv, leakage audit)
+- Nov 28: download the TCGA-CDR file; inspect the IDC embeddings; write `docs/target_registry.md`; start Phase 5: majority baseline, time one RNA fit, PAM50 nested CV on RNA; write `run_target`
 - Nov 29: Phase 5: the other Y values through `run_target`; the other omics modalities
 - Nov 30: Phase 6 fusion; download GDC mutations; start Phase 7
 - Dec 1: Phase 8 imaging (link embeddings to patients, compare omics, image, fused)
