@@ -47,6 +47,7 @@ Wide omics matrices stay in pandas (MySQL InnoDB allows at most 1,017 columns pe
 - Repo: github.com/Thaarun05/CS184AFinalProject, macOS, `.venv`, MySQL in DBeaver, database `brca_project`.
 - Password only via the `MYSQL_PWD` environment variable, never in code.
 - Compute: Google Cloud $300 credit (upgrade to paid for GPU, budget alert at $50), AWS about $117 credit, Databricks Free Edition (CPU only), about 600 GB local disk. Slides: run extraction on a cloud GPU, delete slides after saving features.
+- Tools: Cursor and Codex allowances ran out for the month (2026-11-28); coding continues in Claude Code (Max plan), which reads `CLAUDE.md`. Tutor mode still applies (AGENTS.md).
 - Venues: AACR late-breaking due 2027-01-06 (eligibility unchecked); EACR 2027 abstracts due 2027-03-02; ML4H 2026 deadline passed, watch the 2027 call.
 
 ## Rules that hold everywhere
@@ -60,17 +61,18 @@ Wide omics matrices stay in pandas (MySQL InnoDB allows at most 1,017 columns pe
 
 ## Progress log
 - 2026-11-21: `src/load_clinical.py` tidies clinical.tsv: reads with `na_values=["'--"]`, keeps columns more than 5% filled (202 to 65; dropped ones were negligible), renames dots to underscores. Next: add the `to_sql` load into `brca_project.clinical_raw`, find which columns cause repeated rows (groupby/nunique), then collapse to one row per patient in SQL.
+- 2026-11-21: MySQL connection works; `clinical_raw` loaded into brca_project. Next: PLAN.md Phase 1.
 - 2026-11-24: Phase 1 complete. `clinical_patient.csv` has 1,098 unique 12-character patient IDs and only stable descriptive fields; diagnosis and treatment fields are intentionally excluded.
 - 2026-11-25: Phase 2 receptor audit complete. `receptors.csv` has 1,097 unique IDs; ER/PR use explicit IHC calls, HER2 uses IHC with FISH fallback, and all rows are retained with 25 documented flags for later sensitivity analysis.
 - 2026-11-27: Phase 3 complete. Original MLOmics matrices (671 patients; mRNA 18,206, miRNA 345, Methy 19,049, CNV 19,533 features, zero missing) saved as parquet in `data/processed/`; labels from `BRCA_label_num.csv` attached by position and verified against ER/HER2; `cohort.csv` and `load_xy()` in `src/data.py` with a passing test. Scope widened to Workstreams 1, 2 and 4; presentation date Dec 8.
+- 2026-11-28: Phase 4 complete. `src/splits.py` (`outer_folds`: 5-fold, stratified on PAM50, seed 42, returns patient IDs) with `tests/test_splits.py` passing; fold assignments saved in `results/folds.csv` (671 unique patients, 134 to 135 per fold; Normal has 6 to 7 per test fold); `results/leakage_audit.md` written (allowed and banned inputs per head, nested-CV rules, inner folds 3-fold); `CLAUDE.md` added so Claude Code loads AGENTS.md, this file and PLAN.md.
 
 ## Next steps
-1. Phase 4: `results/leakage_audit.md` (include the allowed and banned inputs table from PLAN.md), outer-fold class counts, `tests/test_splits.py`.
-2. Download the TCGA-CDR table (file id in PLAN.md) and inspect the IDC embedding folders; write `docs/target_registry.md`.
-3. Phase 5: majority baseline, time one RNA elastic-net fit, PAM50 nested CV, then `run_target` for the other Y values.
+1. Download the TCGA-CDR table (file id in PLAN.md) into `data/raw/clinical/`; print its sheet names, the BRCA row count, the PFI event count and which columns are PFI and DFI. Write `docs/target_registry.md` from the table in PLAN.md.
+2. Phase 5: majority baseline, time one RNA elastic-net fit, PAM50 nested CV using `results/folds.csv`, one label-shuffle check, then `run_target` for the other Y values.
+3. Inspect the IDC embedding folders (PLAN.md Phase 8) before relying on them.
 
 ## Longer docs (private Claude Docs, for reference only)
 - Proposal (class template): https://claude.ai/artifact/MrBBmWLuxyGP9e721pGWk6
 - Full-vision roadmap: https://claude.ai/artifact/LqAyAwf3RBxkrhmWu1Wuhv
 - Workstream 1 build guide: https://claude.ai/artifact/24m1mzMJf2oUcry481N6AT
-- 2026-11-21: MySQL connection works; `clinical_raw` loaded into brca_project. Next: PLAN.md Phase 1.
